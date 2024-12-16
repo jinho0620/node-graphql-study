@@ -1,6 +1,8 @@
 const Event = require("../../models/event");
 const User = require("../../models/user");
 const bcrypt = require("bcryptjs");
+const Booking = require("../../models/booking");
+const event = require("../../models/event");
 
 const user = async (userId) => {
   try {
@@ -29,6 +31,19 @@ const events = async (eventIds) => {
   }
 };
 
+const singleEvent = async (eventId) => {
+  try {
+    const event = await Event.findById(eventId);
+    return {
+      ...event._doc,
+      date: new Date(event._doc.date).toISOString(),
+      creator: user.bind(this, event.creator),
+    };
+  } catch (err) {
+    throw err;
+  }
+};
+
 module.exports = {
   events: async () => {
     try {
@@ -45,6 +60,27 @@ module.exports = {
       throw err;
     }
   },
+
+  bookings: async () => {
+    try {
+      const bookings = await Booking.find();
+      return bookings.map((booking) => {
+        // createdAt and updatedAt will override the field from ...booking._doc
+
+        // the time is manipulated to be readable, otherwise it is returned in miliseconds timestamp.
+        return {
+          ...booking._doc,
+          user: user.bind(this, booking._doc.user),
+          event: singleEvent.bind(this, booking._doc.event),
+          createdAt: new Date(booking._doc.createdAt).toISOString(),
+          updatedAt: new Date(booking._doc.updatedAt).toISOString(),
+        };
+      });
+    } catch (err) {
+      throw err;
+    }
+  },
+
   createEvent: async (args) => {
     const event = new Event({
       title: args.eventInput.title,
@@ -88,6 +124,38 @@ module.exports = {
       const result = await user.save();
       console.log(result);
       return { ...result._doc, password: null };
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  bookEvent: async (args) => {
+    const fetchedEvent = await Event.findOne({ _id: args.eventId });
+    const booking = new Booking({
+      user: "675ee0f356d7497ea496df19",
+      event: fetchedEvent,
+    });
+    const createdBooking = await booking.save();
+    return {
+      ...createdBooking._doc,
+      user: user.bind(this, booking._doc.user),
+      event: singleEvent.bind(this, booking._doc.event),
+      createdAt: new Date(createdBooking._doc.createdAt).toISOString(),
+      updatedAt: new Date(createdBooking._doc.updatedAt).toISOString(),
+    };
+  },
+
+  cancelBooking: async (args) => {
+    try {
+      const booking = await Booking.findById(args.bookingId).populate("event");
+      const event = {
+        ...booking.event._doc,
+        _id: booking.event.id, // id (getter) should not be used with _doc. I have to access _id with _doc.
+        creator: user.bind(this, booking.event._doc.creator),
+      };
+
+      await Booking.deleteOne({ _id: args.bookingId });
+      return event;
     } catch (err) {
       throw err;
     }
